@@ -1,0 +1,30 @@
+<!doctype html><meta charset="utf-8"><title>Trakt Scrobble</title>
+<pre id="out">{}</pre>
+<script>
+const CLIENT_ID = "YOUR_CLIENT_ID_HERE";
+const out = document.getElementById('out'); const log=o=>out.textContent=JSON.stringify(o,null,2);
+const q = new URLSearchParams(location.search);
+const type = q.get('type');  // "movie" or "show"
+const imdb = q.get('imdb');  // preferred
+const tvdb = q.get('tvdb');  // optional
+const event = q.get('event')||'start'; // start|pause|stop
+const progress = parseFloat(q.get('progress')||'0');
+(async ()=>{
+  const t = JSON.parse(localStorage.getItem('trakt_tokens_v1')||'null');
+  if(!t) return log({error:'Not connected'});
+  const ep = event==='start'?'/scrobble/start':event==='pause'?'/scrobble/pause':'/scrobble/stop';
+  const ids = imdb ? { imdb } : tvdb ? { tvdb: Number(tvdb) } : {};
+  const body = type==='show' ? { episode:{ ids }, progress } : { movie:{ ids }, progress };
+  try{
+    const r = await fetch(`https://api.trakt.tv${ep}`,{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json','trakt-api-version':'2','trakt-api-key':CLIENT_ID,
+        'Authorization':`Bearer ${t.access_token}`
+      },
+      body: JSON.stringify(body)
+    });
+    log({status:r.status, data: await r.json()});
+  }catch(e){ log({error:String(e)}) }
+})();
+</script>
