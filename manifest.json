@@ -1,7 +1,15 @@
 {
-  "id": "vidi-trakt",
-  "name": "Trakt Sync",
-  "version": "1.0.1",
-  "entry": "index.html",
-  "description": "Connect your Trakt account from Vidi and show a basic watchlist view."
+  "id": "com.gurleen.vidi.trakt",
+  "name": "Trakt Auth Helper",
+  "version": "1.0.3",
+  "description": "Minimal addon so Vidi can install, then open a Trakt login page.",
+  "resources": ["catalog"],
+  "types": ["movie"],
+  "catalogs": [
+    { "type": "movie", "id": "trakt-auth", "name": "Trakt Auth Helper" }
+  ],
+  "behaviorHints": {
+    "configurable": true,
+    "configurationRequired": true
+  }
 }
