@@ -3,6 +3,5 @@
   "name": "Trakt Sync",
   "version": "1.0.0",
   "entry": "index.html",
-  "homepage": "https://gurleensingh27.github.io/Vidi-trakt-Addon/index.html",
-  "description": "Connect your Trakt account and show basic library data."
+  "description": "Connect your Trakt account from Vidi and show a basic watchlist view."
 }
