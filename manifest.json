@@ -1,7 +1,7 @@
 {
   "id": "vidi-trakt",
   "name": "Trakt Sync",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "entry": "index.html",
   "description": "Connect your Trakt account from Vidi and show a basic watchlist view."
 }
