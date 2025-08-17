@@ -1,0 +1,110 @@
+<!doctype html><meta charset="utf-8">
+<title>Vidi × Trakt — My Trakt</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:20px;max-width:920px}
+  h1,h2{margin:.2rem 0}
+  .note{opacity:.75}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+  .card{border:1px solid #ddd;border-radius:10px;padding:12px}
+  .btn{display:inline-block;padding:.6rem .9rem;border:1px solid #ccc;border-radius:10px;text-decoration:none;cursor:pointer}
+  #log{background:#111;color:#eee;padding:10px;border-radius:8px;min-height:80px;white-space:pre-wrap;overflow:auto}
+</style>
+
+<h1>My Trakt</h1>
+<p class="note">Shows basic info using the token saved by the Connect page.</p>
+
+<div id="notConnected" style="display:none">
+  <p>You’re not connected yet.</p>
+  <a class="btn" href="./index.html">Connect Trakt</a>
+</div>
+
+<div id="content" style="display:none">
+  <h2 id="who">Signed in as …</h2>
+
+  <h3>Recent History</h3>
+  <div id="history" class="grid"></div>
+
+  <h3>Watchlist</h3>
+  <div id="watchlist" class="grid"></div>
+</div>
+
+<h3>Log</h3>
+<pre id="log">{}</pre>
+
+<script>
+const CLIENT_ID = "85614a3ca3a24906aa30803018774030709c8d1fb284950f9bc57740c6d37b16"; // your client_id
+const $ = s => document.querySelector(s);
+const log = o => $('#log').textContent = typeof o==='string' ? o : JSON.stringify(o,null,2);
+
+function getTokens(){
+  try { return JSON.parse(localStorage.getItem('trakt_tokens_v1')||'null'); }
+  catch{ return null; }
+}
+
+async function traktFetch(path){
+  const t = getTokens();
+  if(!t) throw new Error('Not connected');
+  const r = await fetch(`https://api.trakt.tv${path}`, {
+    headers: {
+      'Content-Type':'application/json',
+      'trakt-api-version':'2',
+      'trakt-api-key': CLIENT_ID,
+      'Authorization': `Bearer ${t.access_token}`
+    }
+  });
+  if(!r.ok) throw new Error('Trakt '+r.status);
+  return r.json();
+}
+
+function itemTitle(it){
+  return it.movie?.title || it.show?.title || it.episode?.title || 'Unknown';
+}
+
+function itemMeta(it){
+  if(it.show?.title && it.episode) {
+    const s = it.episode.season, e = it.episode.number;
+    return `${it.show.title} — S${String(s).padStart(2,'0')}E${String(e).padStart(2,'0')}`;
+  }
+  if(it.movie?.year) return `${it.movie.title} (${it.movie.year})`;
+  return itemTitle(it);
+}
+
+function card(html){
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.innerHTML = html;
+  return div;
+}
+
+async function render(){
+  const t = getTokens();
+  if(!t){ $('#notConnected').style.display=''; return; }
+
+  $('#content').style.display='';
+  try {
+    // who am I
+    const settings = await traktFetch('/users/settings');
+    $('#who').textContent = 'Signed in as @' + (settings.user?.username || '(unknown)');
+
+    // recent history (last 12)
+    const hist = await traktFetch('/sync/history?limit=12');
+    const histWrap = $('#history'); histWrap.innerHTML='';
+    (hist||[]).forEach(h => {
+      const when = h.watched_at ? new Date(h.watched_at).toLocaleString() : '';
+      histWrap.appendChild(card(`<b>${itemTitle(h)}</b><div class="note">${itemMeta(h)}</div><div class="note">${when}</div>`));
+    });
+
+    // watchlist (first 12)
+    const wl = await traktFetch('/sync/watchlist');
+    const wlWrap = $('#watchlist'); wlWrap.innerHTML='';
+    (wl||[]).slice(0,12).forEach(w => {
+      wlWrap.appendChild(card(`<b>${itemTitle(w)}</b><div class="note">${itemMeta(w)}</div>`));
+    });
+  } catch(e){
+    log(String(e));
+  }
+}
+
+render();
+</script>
