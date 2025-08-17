@@ -1,119 +1,206 @@
-<!doctype html><meta charset="utf-8">
-<title>Vidi × Trakt — Connect</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-  body{font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:20px; max-width:820px}
-  .btn{display:inline-block; padding:.8rem 1rem; border:1px solid #ccc; border-radius:10px; text-decoration:none; cursor:pointer}
-  #log{background:#111;color:#eee;padding:12px;border-radius:8px;min-height:120px;overflow:auto;white-space:pre-wrap}
-  .code{font-size:24px;font-weight:800;letter-spacing:2px}
-</style>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Vidi × Trakt — Connect</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { --b:#ccc; --bg:#111; --fg:#eee; }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:20px;max-width:880px}
+    h1,h2,h3{margin:.2rem 0}
+    .row{display:flex;gap:8px;flex-wrap:wrap;margin:.5rem 0}
+    .btn{display:inline-block;padding:.7rem 1rem;border:1px solid var(--b);border-radius:10px;text-decoration:none;cursor:pointer}
+    .btn[disabled]{opacity:.6;cursor:not-allowed}
+    .code{font-size:24px;font-weight:800;letter-spacing:2px}
+    .tag{display:inline-block;font:12px/1.2 monospace;background:#f6f6f6;border:1px solid #e5e5e5;border-radius:6px;padding:2px 6px}
+    #log{background:var(--bg);color:var(--fg);padding:12px;border-radius:8px;min-height:120px;overflow:auto;white-space:pre-wrap}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+    .card{border:1px solid #e1e1e1;border-radius:10px;padding:12px}
+    .note{opacity:.75}
+  </style>
+</head>
+<body>
+  <h1>Connect Trakt</h1>
+  <p>Link your Vidi app with your Trakt account using Device Flow.</p>
 
-<h1>Connect Trakt</h1>
-<p>Link your Vidi app with your Trakt account using Device Flow.</p>
+  <div class="row">
+    <button class="btn" id="btnGet">Get Device Code</button>
+    <a class="btn" id="btnActivate" target="_blank" rel="noopener">Open trakt.tv/activate</a>
+    <button class="btn" id="btnPoll">Start Auto-Poll</button>
+    <button class="btn" id="btnStop">Stop</button>
+    <button class="btn" id="btnSignOut" title="Forget saved tokens">Sign out</button>
+  </div>
 
-<div>
-  <a class="btn" id="btnGet">Get Device Code</a>
-  <a class="btn" id="btnActivate" target="_blank" rel="noopener">Open trakt.tv/activate</a>
-  <a class="btn" id="btnPoll">Start Auto-Poll</a>
-</div>
+  <div class="row">
+    <div><b>User Code:</b> <span id="userCode" class="code">----</span></div>
+    <div><b>Device Code:</b> <span id="deviceCode" class="tag">----</span></div>
+  </div>
+  <div class="row">
+    <div><b>Interval:</b> <span id="interval" class="tag">-</span> s</div>
+    <div><b>Expires in:</b> <span id="expiresIn" class="tag">-</span> s</div>
+  </div>
 
-<p><b>User Code:</b> <span id="userCode" class="code">----</span></p>
-<p><b>Device Code:</b> <span id="deviceCode">----</span></p>
+  <h3>Log</h3>
+  <pre id="log">{}</pre>
 
-<div id="connected" style="display:none;margin-top:12px">
-  <h2>Connected</h2>
-  <div id="who"></div>
-  <h3>My Watchlist (first 10)</h3>
-  <ul id="watchlist"></ul>
-</div>
+  <div id="connected" style="display:none;margin-top:12px">
+    <h2>Connected</h2>
+    <div id="who"></div>
+    <h3>My Watchlist (first 10)</h3>
+    <div id="watchlist" class="grid"></div>
+  </div>
 
-<h3>Log</h3>
-<pre id="log">{}</pre>
+  <script>
+  // === Configure these two ===
+  const BACKEND   = "https://vidi-trakt-backend-q2u2.vercel.app/api"; // your backend base URL
+  const CLIENT_ID = "85614a3ca3a24906aa30803018774030709c8d1fb284950f9bc57740c6d37b16"; // your Trakt client_id
 
-<script>
-const BACKEND = "https://vidi-trakt-backend-q2u2.vercel.app/api";   // your backend base URL
-const CLIENT_ID = "85614a3ca3a24906aa30803018774030709c8d1fb284950f9bc57740c6d37b16"; // your Trakt client_id
+  // ===== Helpers =====
+  const $ = sel => document.querySelector(sel);
+  const log = o => { $('#log').textContent = typeof o==='string' ? o : JSON.stringify(o, null, 2); };
+  const setText = (id, v) => { $(id).textContent = v; };
 
-// tiny helpers
-const $ = sel => document.querySelector(sel);
-const log = (o) => { $('#log').textContent = typeof o === 'string' ? o : JSON.stringify(o,null,2); };
+  let device_code = null, expiresAt = 0, baseIntervalMs = 5000, polling = false;
 
-let device_code=null, expiresAt=0, intervalMs=5000, polling=false;
-
-$('#btnGet').onclick = async () => {
-  log({info:'POST /trakt/device…'});
-  const r = await fetch(`${BACKEND}/trakt/device`, { method:'POST' });
-  const d = await r.json().catch(()=>null);
-  if(!d){ log({error:'bad response'}); return; }
-  log(d);
-  if (r.ok && d.user_code) {
-    $('#userCode').textContent = d.user_code;
-    $('#deviceCode').textContent = device_code = d.device_code;
-    intervalMs = (d.interval || 5)*1000;
-    expiresAt = Date.now() + (d.expires_in || 600)*1000;
-    $('#btnActivate').href = d.verification_url || 'https://trakt.tv/activate';
-  }
-};
-
-async function pollOnce(){
-  if(!device_code) return log({error:'Get device code first'});
-  if(Date.now()>expiresAt) return log({status:'expired'});
-  const r = await fetch(`${BACKEND}/trakt/poll`, { method:'POST', body:`device_code=${encodeURIComponent(device_code)}` });
-  const p = await r.json().catch(()=>null);
-  if(!p){ log({error:'poll parse failed'}); return null; }
-  log(p);
-  if(p.nextPollAddSec) intervalMs += p.nextPollAddSec*1000;
-  if(p.status==='ok' && p.access_token){
-    const tokens = { access_token:p.access_token, refresh_token:p.refresh_token, expires_at: Date.now() + p.expires_in*1000 };
-    localStorage.setItem('trakt_tokens_v1', JSON.stringify(tokens));
-    const payload = { type:'trakt-auth', tokens };
-    try { window.parent?.postMessage(payload, '*'); } catch(e){}
-    try { window.webkit?.messageHandlers?.trakt?.postMessage?.(payload); } catch(e){}
-    try { window.location = `vidi://trakt-auth?access_token=${encodeURIComponent(tokens.access_token)}&refresh_token=${encodeURIComponent(tokens.refresh_token)}` } catch(e){}
-    showConnectedData(tokens.access_token);
-  }
-  return p;
-}
-
-$('#btnPoll').onclick = async ()=>{
-  if(polling) return; polling = true;
-  while(polling){
-    const p = await pollOnce();
-    if(!p || p.status==='ok' || p.status==='expired'){ polling=false; break; }
-    await new Promise(res=>setTimeout(res, intervalMs));
-  }
-};
-
-async function traktFetch(token, path){
-  const res = await fetch(`https://api.trakt.tv${path}`, {
-    headers: {
-      'Content-Type':'application/json',
-      'trakt-api-version':'2',
-      'trakt-api-key': CLIENT_ID,
-      'Authorization': `Bearer ${token}`
+  // ===== Get Device Code =====
+  $('#btnGet').onclick = async () => {
+    $('#btnGet').disabled = true;
+    log({ info: 'POST /trakt/device…' });
+    try {
+      const r = await fetch(`${BACKEND}/trakt/device`, { method: 'POST' });
+      const d = await r.json().catch(()=>null);
+      if (!d) { log({ error: 'Bad response' }); return; }
+      log(d);
+      if (r.ok && d.user_code) {
+        setText('#userCode', d.user_code);
+        device_code = d.device_code;
+        setText('#deviceCode', device_code);
+        baseIntervalMs = (d.interval || 5) * 1000;
+        expiresAt = Date.now() + (d.expires_in || 600) * 1000;
+        setText('#interval', d.interval || 5);
+        setText('#expiresIn', d.expires_in || 600);
+        $('#btnActivate').href = d.verification_url || 'https://trakt.tv/activate';
+      } else {
+        setText('#userCode', '----');
+        setText('#deviceCode', '----');
+      }
+    } catch (e) {
+      log({ fetch_error: String(e) });
+    } finally {
+      $('#btnGet').disabled = false;
     }
-  });
-  if(!res.ok) throw new Error('Trakt '+res.status);
-  return res.json();
-}
+  };
 
-async function showConnectedData(token){
-  $('#connected').style.display = '';
+  // ===== Poll Once =====
+  async function pollOnce() {
+    if (!device_code) { log({ error: 'Get device code first' }); return null; }
+    if (Date.now() > expiresAt) { log({ status: 'expired' }); return { status: 'expired' }; }
+    try {
+      const r = await fetch(`${BACKEND}/trakt/poll`, {
+        method: 'POST',
+        // no Content-Type header → avoids iOS preflight
+        body: `device_code=${encodeURIComponent(device_code)}`
+      });
+      const p = await r.json().catch(()=>null);
+      if (!p) { log({ error: 'poll parse failed', status: r.status }); return null; }
+      log(p);
+      if (p.nextPollAddSec) baseIntervalMs += p.nextPollAddSec * 1000;
+
+      if (p.status === 'ok' && p.access_token) {
+        const tokens = {
+          access_token: p.access_token,
+          refresh_token: p.refresh_token,
+          expires_at: Date.now() + (p.expires_in * 1000)
+        };
+        localStorage.setItem('trakt_tokens_v1', JSON.stringify(tokens));
+
+        // notify host app (Vidi may support any of these bridges)
+        const payload = { type: 'trakt-auth', tokens };
+        try { window.parent?.postMessage(payload, '*'); } catch {}
+        try { window.webkit?.messageHandlers?.trakt?.postMessage?.(payload); } catch {}
+        try {
+          window.location = `vidi://trakt-auth?access_token=${encodeURIComponent(tokens.access_token)}&refresh_token=${encodeURIComponent(tokens.refresh_token)}`;
+        } catch {}
+
+        // show some data
+        showConnectedData(tokens.access_token);
+      }
+      return p;
+    } catch (e) {
+      log({ fetch_error: String(e) });
+      return null;
+    }
+  }
+
+  // ===== Auto-Poll Loop =====
+  $('#btnPoll').onclick = async () => {
+    if (polling) return;
+    polling = true;
+    $('#btnPoll').disabled = true;
+    let wait = baseIntervalMs;
+    while (polling) {
+      const p = await pollOnce();
+      if (!p || p.status === 'ok' || p.status === 'expired') { polling = false; break; }
+      await new Promise(res => setTimeout(res, wait));
+    }
+    $('#btnPoll').disabled = false;
+  };
+
+  $('#btnStop').onclick = () => { polling = false; };
+
+  // ===== Sign out (clear tokens) =====
+  $('#btnSignOut').onclick = () => {
+    localStorage.removeItem('trakt_tokens_v1');
+    $('#connected').style.display = 'none';
+    log({ signed_out: true });
+  };
+
+  // ===== Trakt helpers (direct calls) =====
+  async function traktFetch(token, path) {
+    const res = await fetch(`https://api.trakt.tv${path}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        'trakt-api-version': '2',
+        'trakt-api-key': CLIENT_ID,
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!res.ok) throw new Error('Trakt ' + res.status);
+    return res.json();
+  }
+
+  function card(html) {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = html;
+    return div;
+  }
+
+  async function showConnectedData(token) {
+    $('#connected').style.display = '';
+    try {
+      const settings = await traktFetch(token, '/users/settings');
+      const user = settings.user?.username || '(unknown)';
+      $('#who').textContent = 'Signed in as @' + user;
+
+      const wl = await traktFetch(token, '/sync/watchlist');
+      const wrap = document.getElementById('watchlist');
+      wrap.innerHTML = '';
+      (wl || []).slice(0, 10).forEach(it => {
+        const title = it.movie?.title || it.show?.title || 'Unknown';
+        const meta  = it.movie?.year ? ` (${it.movie.year})` : it.show?.year ? ` (${it.show.year})` : '';
+        wrap.appendChild(card(`<b>${title}</b><div class="note">${meta}</div>`));
+      });
+    } catch (e) {
+      log('Connected, but failed to load sample data: ' + e.message);
+    }
+  }
+
+  // ===== Auto-show if already connected (when Vidi re-opens the addon) =====
   try {
-    const settings = await traktFetch(token, '/users/settings');
-    $('#who').textContent = 'Signed in as @' + (settings.user?.username || '(unknown)');
-    const wl = await traktFetch(token, '/sync/watchlist');
-    $('#watchlist').innerHTML = (wl||[]).slice(0,10).map(it=>{
-      const title = it.movie?.title || it.show?.title || 'Unknown';
-      return `<li>${title}</li>`;
-    }).join('');
-  } catch(e) { log('Connected, but failed to load sample data: '+e.message); }
-}
-
-// auto-show if already connected
-try {
-  const t = JSON.parse(localStorage.getItem('trakt_tokens_v1')||'null');
-  if(t && t.access_token) showConnectedData(t.access_token);
-} catch {}
-</script>
-</body></html>
+    const t = JSON.parse(localStorage.getItem('trakt_tokens_v1') || 'null');
+    if (t && t.access_token) showConnectedData(t.access_token);
+  } catch {}
+  </script>
+</body>
+</html>
