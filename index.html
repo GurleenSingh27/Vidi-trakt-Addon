@@ -31,8 +31,8 @@
 <pre id="log">{}</pre>
 
 <script>
-const BACKEND = "https://vidi-trakt-backend-q2u2.vercel.app/api";   // <-- your backend base URL
-const CLIENT_ID = "85614a3ca3a24906aa30803018774030709c8d1fb284950f9bc57740c6d37b16;                              // <-- your Trakt client_id
+const BACKEND = "https://vidi-trakt-backend-q2u2.vercel.app/api";   // your backend base URL
+const CLIENT_ID = "85614a3ca3a24906aa30803018774030709c8d1fb284950f9bc57740c6d37b16"; // your Trakt client_id
 
 // tiny helpers
 const $ = sel => document.querySelector(sel);
@@ -66,12 +66,10 @@ async function pollOnce(){
   if(p.status==='ok' && p.access_token){
     const tokens = { access_token:p.access_token, refresh_token:p.refresh_token, expires_at: Date.now() + p.expires_in*1000 };
     localStorage.setItem('trakt_tokens_v1', JSON.stringify(tokens));
-    // notify host app (Vidi can listen via one of these)
     const payload = { type:'trakt-auth', tokens };
     try { window.parent?.postMessage(payload, '*'); } catch(e){}
     try { window.webkit?.messageHandlers?.trakt?.postMessage?.(payload); } catch(e){}
     try { window.location = `vidi://trakt-auth?access_token=${encodeURIComponent(tokens.access_token)}&refresh_token=${encodeURIComponent(tokens.refresh_token)}` } catch(e){}
-    // show some data
     showConnectedData(tokens.access_token);
   }
   return p;
@@ -112,9 +110,10 @@ async function showConnectedData(token){
   } catch(e) { log('Connected, but failed to load sample data: '+e.message); }
 }
 
-// auto-show if already connected (when Vidi re-opens the addon)
+// auto-show if already connected
 try {
   const t = JSON.parse(localStorage.getItem('trakt_tokens_v1')||'null');
   if(t && t.access_token) showConnectedData(t.access_token);
 } catch {}
 </script>
+</body></html>
