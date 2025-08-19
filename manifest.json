@@ -2,14 +2,11 @@
   "id": "com.gurleen.vidi.trakt",
   "name": "Trakt Auth Helper",
   "version": "1.0.3",
-  "description": "Minimal addon so Vidi can install, then open a Trakt login page.",
+  "description": "Auth-only addon to link Trakt for scrobbling.",
   "resources": ["catalog"],
   "types": ["movie"],
   "catalogs": [
     { "type": "movie", "id": "trakt-auth", "name": "Trakt Auth Helper" }
   ],
-  "behaviorHints": {
-    "configurable": true,
-    "configurationRequired": true
-  }
+  "behaviorHints": { "configurable": true, "configurationRequired": true }
 }
